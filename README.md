@@ -4,10 +4,10 @@
 
 * [install elasticsearch version 5.x](https://www.elastic.co/guide/en/elasticsearch/reference/5.6/deb.html)
 * [install grafana](http://docs.grafana.org/installation/debian/)
-* run an AEM 6.3 author (locally or VM)
-* install acs-aem-commons-content-3.14.x-min.zip (min is important, otherwise you need a twitter bundle(?!))
+* run an AEM 6.3 author or any other syslog source
+  * AEM: install acs-aem-commons-content-3.14.x-min.zip (min is important, otherwise you need a twitter bundle(?!))
 
-## Configuration:
+## AEM Configuration:
 
 * Create a new Syslog Appender for log.request as OSGi config under `/system/console/configMgr` (search for Syslog, cp. [Syslog Appender](https://adobe-consulting-services.github.io/acs-aem-commons/features/syslog-appender/index.html))
 * Parameters:
