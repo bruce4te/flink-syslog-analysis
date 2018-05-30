@@ -1,0 +1,72 @@
+{
+	"template": "*-requeststats-*",
+	"settings": {
+		"index.refresh_interval": "5s",
+		"index.number_of_replicas": "0"
+	},
+	"mappings": {
+		"_default_": {
+			"_all": {
+				"enabled": true,
+				"norms": {
+					"enabled": false
+				}
+			},
+			"dynamic_templates": [{
+				"template1": {
+					"mapping": {
+						"doc_values": true,
+						"ignore_above": 1024,
+						"index": "not_analyzed",
+						"type": "{dynamic_type}"
+					},
+					"match": "*"
+				}
+			}],
+			"properties": {
+				"count": {
+					"type": "long"
+				},
+				"code": {
+					"index": "not_analyzed",
+					"type": "string"
+				},
+				"protocol": {
+					"index": "not_analyzed",
+					"type": "string"
+				},
+				"@timestamp": {
+					"type": "date",
+					"format": "dateOptionalTime"
+				},
+				"out_timestamp": {
+					"type": "date",
+					"format": "dateOptionalTime"
+				},
+				"host": {
+					"index": "not_analyzed",
+					"type": "string"
+				},
+				"request_id": {
+					"type": "long"
+				},
+				"duration": {
+					"type": "long"
+				},
+				"path": {
+					"index": "not_analyzed",
+					"type": "string"
+				},
+				"method": {
+					"index": "not_analyzed",
+					"type": "string"
+				},
+				"mime_type": {
+					"index": "not_analyzed",
+					"type": "string"
+				}
+			}
+		}
+	},
+	"aliases": {}
+}
