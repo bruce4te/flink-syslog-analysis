@@ -21,22 +21,41 @@ public class RequestEvent {
     private String mimeType;
     private long duration;
 
-    public RequestEvent(String incomingTStamp, String outgoingTStamp, String host, long requestId, String method,
-                        String path, String protocol, String code, String mimeType, long duration) {
-        this.incomingTStamp = incomingTStamp;
-        this.outgoingTStamp = outgoingTStamp;
-        this.host = host;
-        this.requestId = requestId;
-        this.method = method;
-        this.path = path;
-        this.protocol = protocol;
-        this.code = code;
-        this.mimeType = mimeType;
-        this.duration = duration;
+    public RequestEvent(IncomingLine incoming, OutgoingLine outgoing) {
+        this.incomingTStamp = incoming.getEventTime();
+        this.outgoingTStamp = outgoing.getEventTime();
+        this.host = incoming.getHostName();
+        this.requestId = incoming.getRequestId();
+        this.method = incoming.getMethod();
+        this.path = incoming.getPath();
+        this.protocol = incoming.getProtocol();
+        this.code = outgoing.getResponseCode();
+        this.mimeType = outgoing.getMimeType();
+        this.duration = outgoing.getDuration();
     }
 
     public String getHost() {
         return host;
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public String getPath() {
+        return path;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public String getCode() {
+        return code;
+    }
+
+    public long getDuration() {
+        return duration;
     }
 
     public String toJson() {

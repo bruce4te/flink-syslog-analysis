@@ -1,13 +1,16 @@
 package info.icould.analysis.flink.syslog;
 
+import info.icould.analysis.flink.domain.IncomingLine;
+import info.icould.analysis.flink.domain.OutgoingLine;
 import info.icould.analysis.flink.domain.RequestEvent;
 import info.icould.analysis.flink.utils.Constants;
-import org.apache.flink.api.common.functions.JoinFunction;
+import info.icould.analysis.flink.utils.IncomingLineMapper;
+import info.icould.analysis.flink.utils.JoinRequestFunction;
+import info.icould.analysis.flink.utils.OutgoingLineMapper;
 import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.api.java.tuple.Tuple2;
-import org.apache.flink.api.java.tuple.Tuple6;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.TimeCharacteristic;
 import org.apache.flink.streaming.api.collector.selector.OutputSelector;
@@ -23,6 +26,8 @@ import org.apache.flink.streaming.connectors.elasticsearch5.ElasticsearchSink;
 import org.apache.flink.streaming.connectors.kafka.FlinkKafkaConsumer011;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.client.Requests;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -37,6 +42,8 @@ import java.util.Map;
 import java.util.Properties;
 
 public class RequestLogAnalysis {
+
+    private static final Logger LOG = LoggerFactory.getLogger(RequestLogAnalysis.class);
 
     public static void main(String[] args) throws Exception {
 
@@ -63,8 +70,8 @@ public class RequestLogAnalysis {
         });
 
         SplitStream<String> splitStream = splitLog(allRequestLogs);
-        DataStream<Tuple6<String,String,Long, String,String, String>> incomingStream = parseIncomingStream(splitStream);
-        DataStream<Tuple6<String,String,Long,String,String,Long>> outgoingStream = parseOutgoingStream(splitStream);
+        DataStream<IncomingLine> incomingStream = parseIncomingStream(splitStream);
+        DataStream<OutgoingLine> outgoingStream = parseOutgoingStream(splitStream);
         DataStream<RequestEvent> resultStream = joinStreams(incomingStream, outgoingStream);
 
         List<InetSocketAddress> transportAddresses = new ArrayList<>();
@@ -76,6 +83,7 @@ public class RequestLogAnalysis {
         resultStream.addSink(new ElasticsearchSink<>(config, transportAddresses, new ElasticsearchSinkFunction<RequestEvent>() {
             IndexRequest createIndexRequest(RequestEvent element) {
                 String suffix = element.getHost().toLowerCase();
+                LOG.info(element.toJson());
                 return Requests.indexRequest()
                         .index(params.getRequired(Constants.INDEX_NAME_PREFIX) + suffix)
                         .type("get-requests")
@@ -103,50 +111,31 @@ public class RequestLogAnalysis {
         });
     }
 
-    private static DataStream<Tuple6<String,String,Long,String,String,String>> parseIncomingStream(SplitStream<String> splitStream) {
+    private static DataStream<IncomingLine> parseIncomingStream(SplitStream<String> splitStream) {
         return splitStream
                 .select("incoming")
-                .map(s -> {
-                    String[] lineParts = s.split(" ");
-                    DateTimeFormatter accessFormatter = DateTimeFormatter.ofPattern(Constants.ACCESS_LOG_DF, Locale.ENGLISH);
-                    LocalDateTime logDate = LocalDateTime.parse(lineParts[2], accessFormatter);
-                    String timestamp = logDate.toString();
-                    long requestId = Long.parseLong(lineParts[4].replace("[","").replace("]", ""));
-                    return new Tuple6<>(lineParts[1],timestamp,
-                            requestId,lineParts[6],lineParts[7],lineParts[8]);
-                });
+                .map(new IncomingLineMapper());
     }
 
-    private static DataStream<Tuple6<String,String,Long,String,String,Long>> parseOutgoingStream(SplitStream<String> splitStream) {
+    private static DataStream<OutgoingLine> parseOutgoingStream(SplitStream<String> splitStream) {
         return splitStream
                 .select("outgoing")
-                .map(s -> {
-                    String[] lineParts = s.split(" ");
-                    DateTimeFormatter accessFormatter = DateTimeFormatter.ofPattern(Constants.ACCESS_LOG_DF, Locale.ENGLISH);
-                    LocalDateTime logDate = LocalDateTime.parse(lineParts[2], accessFormatter);
-                    String timestamp = logDate.toString();
-                    long requestId = Long.parseLong(lineParts[4].replace("[","").replace("]", ""));
-                    long duration = Long.parseLong(lineParts[lineParts.length-1].replace("ms",""));
-                    return new Tuple6<>(lineParts[1],timestamp,
-                            requestId,lineParts[6],lineParts[7],duration);
-                });
+                .map(new OutgoingLineMapper());
     }
 
-    private static DataStream<RequestEvent> joinStreams(DataStream<Tuple6<String,String,Long,String,String,String>> incomingStream, DataStream<Tuple6<String,String,Long,String,String,Long>> outgoingStream) {
+    private static DataStream<RequestEvent> joinStreams(DataStream<IncomingLine> incomingStream, DataStream<OutgoingLine> outgoingStream) {
         return incomingStream
                 // join streams
                 .join(outgoingStream)
-                // where incoming.ID == outgoing.ID
-                .where((KeySelector<Tuple6<String, String, Long, String, String, String>, Tuple2<Long,String>>) incoming -> new Tuple2<>(incoming.f2,incoming.f0))
-                .equalTo((KeySelector<Tuple6<String, String, Long, String, String, Long>, Tuple2<Long,String>>) outgoing -> new Tuple2<>(outgoing.f2,outgoing.f0))
+                // where incoming.ID == outgoing.ID AND incoming.hostname == outgoing.hostname
+                .where((KeySelector<IncomingLine, Tuple2<Long,String>>) incoming -> new Tuple2<>(incoming.getRequestId(),incoming.getHostName()))
+                .equalTo((KeySelector<OutgoingLine, Tuple2<Long,String>>) outgoing -> new Tuple2<>(outgoing.getRequestId(), outgoing.getHostName()))
                 // within 60s tumbling window
                 .window(TumblingProcessingTimeWindows.of(Time.seconds(60L)))
                 // apply custom join function to form request event
-                .apply((JoinFunction<Tuple6<String, String, Long, String, String, String>,
-                        Tuple6<String, String, Long, String, String, Long>, RequestEvent>)
-                        (incoming, outgoing) -> new RequestEvent(incoming.f1,outgoing.f1,incoming.f0,incoming.f2,incoming.f3,
-                                incoming.f4,incoming.f5,outgoing.f3,outgoing.f4,outgoing.f5));
+                .apply(new JoinRequestFunction());
     }
+
 
     private static Properties setProperties(ParameterTool params) {
         Properties properties = new Properties();

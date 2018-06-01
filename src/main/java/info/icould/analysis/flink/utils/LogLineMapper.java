@@ -35,7 +35,7 @@ public class LogLineMapper implements MapFunction<String, Tuple4<String, String,
         s = s.replace("  "," ");
         String[] logLineParts = s.split(this.regex);
         if (LOG.isInfoEnabled()) {
-            LOG.info("Log Line: " + s);
+            LOG.info("Log Line: {}", s);
         }
         String logLineValue = logLineParts[this.valuePos];
         String host = logLineParts[this.hostPos];
@@ -48,7 +48,7 @@ public class LogLineMapper implements MapFunction<String, Tuple4<String, String,
             localDateTime = localDateTime.minusSeconds(logDate.getSecond());
             result = new Tuple4<>(localDateTime.toString(), logLineValue, host, direction);
             if (LOG.isInfoEnabled()) {
-                LOG.info("Map result: " + result);
+                LOG.info("Map result: {}", result);
             }
         } catch (DateTimeParseException dtpe){
             LOG.error(format("Error parsing date: %s, %s", logLineParts[this.datetimePos], logLineParts));
